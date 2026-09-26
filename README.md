@@ -1,20 +1,16 @@
-# Olist Brazilian E-Commerce — Customer Satisfaction & Seller Lifecycle Intelligence
+# Olist Brazilian E-Commerce — Pricing Perception vs Operational Performance
 
 ## Problem Statement
 
-What actually drives a customer's review score — the price they pay for shipping, or how reliably their order arrives? And can a marketplace tell that a seller is starting to decline *before* customers start punishing them in reviews?
+What actually drives a customer's review score — the price they pay for shipping, or how reliably their order arrives?
 
-This project answers these questions by analyzing **105,363 order-item records** across **~92,000 orders**, **2,915 sellers**, and **32,951 products**, using the real Olist Brazilian E-Commerce dataset. Using Python and Pandas, nine raw relational tables were cleaned and joined into a single analytical table, then statistical hypothesis testing and machine learning were used to isolate the true drivers of customer satisfaction and the earliest behavioral signal of seller decline. All analysis, reasoning, and results are documented directly inside the Jupyter notebook.
+This project answers that question by analyzing **105,363 order-item records** across roughly **96,000 delivered orders**, using the real Olist Brazilian E-Commerce dataset. Using Python and Pandas, nine raw relational tables were cleaned and joined into a single analytical table, then correlation analysis, hypothesis testing, and regression modeling were used to isolate the true driver of customer satisfaction. All analysis, reasoning, and results are documented directly inside the Jupyter notebook.
 
 ---
 
-## Research Questions
+## Research Question
 
-### Question 1 — Pricing Perception vs Operational Performance
 > *Does freight cost as a percentage of product price systematically predict customer review scores independent of delivery speed — and what is the relative contribution of pricing perception versus operational performance in determining customer satisfaction?*
-
-### Question 2 — Seller Lifecycle Trust Erosion
-> *Do Olist sellers follow a predictable lifecycle of trust erosion, where early operational decisions create compounding effects on their long-term review trajectory — and can we identify a leading behavioral signal of decline before customers begin punishing them in reviews?*
 
 ---
 
@@ -23,7 +19,7 @@ This project answers these questions by analyzing **105,363 order-item records**
 | Attribute | Details |
 |---|---|
 | **Source** | Olist — Brazilian E-Commerce Public Dataset (Kaggle) |
-| **Coverage** | 2,906+ sellers · 9 relational tables · 540+ product categories |
+| **Coverage** | 9 relational tables · 540+ product categories |
 | **Time period** | September 2016 – October 2018 |
 | **Records** | 105,363 order-item rows × 50 columns (final joined table) |
 | **Population** | Real, anonymized orders placed on the Olist marketplace in Brazil |
@@ -46,7 +42,7 @@ https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce
 * **Pandas / NumPy**
 * **Matplotlib / Seaborn**
 * **SciPy** (hypothesis testing)
-* **Scikit-learn** (regression & classification)
+* **Scikit-learn** (regression)
 * **Jupyter Notebook**
 
 ---
@@ -69,16 +65,8 @@ Master Analytical Table
 (9 sequential joins → 105,363 rows × 50 columns)
         │
         ▼
-Q1: Statistical Analysis
+Statistical Analysis
 (correlation, hypothesis testing, regression)
-        │
-        ▼
-Q2: Seller Lifecycle Analysis
-(early/mid/late phase segmentation, archetype classification)
-        │
-        ▼
-Predictive Modeling
-(Logistic Regression + Random Forest, cross-validated)
 ```
 
 ---
@@ -127,20 +115,19 @@ Every table is profiled first — shape, dtypes, null counts and percentages, du
 
 Several derived features were engineered to power the analysis:
 
-* `freight_ratio` (freight ÷ price) — primary variable for Q1
+* `freight_ratio` (freight ÷ price) — primary variable for the research question
 * `promise_gap_days`, `actual_delivery_days`, `carrier_pickup_days`, `delivery_to_customer_days`
 * `delivery_status` (early / on_time / late)
 * `shipping_distance_km` (haversine distance between seller and customer zip centroids)
 * `is_free_shipping`, `freight_exceeds_price` (binary flags)
-* `lifecycle_phase` (early / mid / late, per seller) and `seller_archetype` (deteriorating / stable / improving)
 
-These metrics form the foundation for every statistical test, regression, and model in the notebook.
+These metrics form the foundation for every statistical test and regression in the notebook.
 
 ---
 
 ## Master Table Design
 
-All 9 cleaned tables are joined into a single **item-level** analytical table (one row per order-item), preserving the granularity needed for both research questions.
+All 9 cleaned tables are joined into a single **item-level** analytical table (one row per order-item).
 
 ```text
                  dim-like lookup tables
@@ -176,82 +163,40 @@ All 9 cleaned tables are joined into a single **item-level** analytical table (o
 ### Design Decisions
 
 * Raw source tables are never modified — all cleaning happens on copies (`*_clean` DataFrames).
-* One fact row represents a unique order-item, preserving seller/product granularity for Q2 while still supporting order-level aggregation for Q1.
+* One fact row represents a unique order-item, preserving seller/product granularity while still supporting order-level aggregation for the analysis.
 * The joined table is saved as a CSV checkpoint (`master_analytical_table.csv`) so later analysis phases can reload it without repeating every cleaning step and join.
 * Rows with a missing review score are retained (not silently dropped) and only filtered out when a review score is actually required.
 
 ---
 
-## Statistical & Modeling Approach
-
-### Q1 — Pricing Perception vs Operational Performance
+## Statistical Approach
 
 * Pearson & Spearman correlation (raw and log-transformed freight ratio, plus shipping distance)
 * One-way ANOVA — review score across freight ratio quartiles
-* Kruskal-Wallis — non-parametric equivalent of the ANOVA
-* Mann-Whitney U — early vs. late delivery review scores
 * Base multivariate regression (8 features)
 * Extended multivariate regression (15 features, adding category, state, weight, payment behavior as controls)
-
-### Q2 — Seller Lifecycle Trust Erosion
-
-* Filtered to sellers with **≥15 orders** (941 qualifying sellers, covering 90% of all reviewed orders — threshold chosen by testing seller survival at 5/10/15/20/30/50-order cutoffs)
-* Each seller's order history split into **early / mid / late thirds**
-* Sellers classified into 3 archetypes based on review score change (late minus early):
-  * `deteriorating` — change ≤ -0.5
-  * `improving` — change ≥ +0.5
-  * `stable` — everything in between
-* Early/mid/late phase behavior compared across archetypes to isolate a leading signal
-* Seller tenure compared across archetypes as an additional control
-
-### Predictive Modeling
-
-Using only early/mid-phase behavioral features (no late-phase data, since the goal is early prediction):
-
-* **Logistic Regression** (scaled features, `class_weight='balanced'`)
-* **Random Forest** (raw features, `class_weight='balanced'`)
-* Evaluated on a held-out stratified test set and validated with **5-fold stratified cross-validation**
 
 ---
 
 ## Key Metrics & Results
 
-### Core Statistical Results
-
 | Metric | Result |
 |---|---|
-| Freight ratio vs. review score (correlation) | r ≈ -0.036 to -0.041 |
+| Freight ratio vs. review score (Pearson) | r = -0.0414, p < 0.001 |
+| Freight ratio vs. review score (Spearman) | r = -0.036, p < 0.001 |
 | Freight ratio effect across quartiles (ANOVA) | F = 40.18, p < 0.001 |
-| Early vs. late delivery (Mann-Whitney U) | U = 325.1M, p < 0.001 |
 | Base regression R² (8 features) | 0.086 |
 | Extended regression R² (15 features) | 0.089 |
 | Delivery timing (`is_late`) coefficient | -0.25 to -0.26 |
-| Freight ratio coefficient (standardized) | +0.03 to +0.05 |
+| Freight ratio coefficient (standardized) | +0.026 to +0.046 |
 
-### Seller Lifecycle Results
-
-| Metric | Result |
-|---|---|
-| Qualifying sellers (≥15 orders) | 941 (90% of reviewed orders) |
-| Deteriorating sellers | 144 (15.3%) |
-| Stable sellers | 658 (69.9%) |
-| Improving sellers | 139 (14.8%) |
-| Deteriorating: early → late review score | 4.500 → 3.677 (-0.823) |
-| Improving: early → late review score | 3.709 → 4.545 (+0.836) |
-| Deteriorating mid-phase late-delivery jump | +2.22 pts (vs. +1.84 stable, -1.94 improving) |
-
-### Predictive Model Results
-
-| Model | ROC-AUC (test) | ROC-AUC (5-fold CV mean ± std) |
-|---|---|---|
-| Logistic Regression | 0.709 | **0.716 ± 0.017** |
-| Random Forest | 0.745 | 0.681 ± 0.036 |
+> **Note:** ANOVA's F-statistic confirms a significant difference exists between freight ratio quartiles, but F is a test statistic, not an effect size — it doesn't measure how large that difference is. No effect-size measure was calculated for this test.
 
 ---
 
 ## Notebook Structure & Insights
 
-The analysis lives in a single Jupyter notebook, organized into 6 phases.
+The analysis lives in a single Jupyter notebook, organized into 4 phases.
 
 ---
 
@@ -269,75 +214,32 @@ Loads all 9 raw tables, profiles and cleans each independently, then joins them 
 
 ---
 
-### Phase 4 — Q1: Pricing Perception vs Operational Performance
+### Phase 4 — Pricing Perception vs Operational Performance
 
 #### Key Insights
 
-* All three hypothesis tests (ANOVA, Kruskal-Wallis, Mann-Whitney U) are statistically significant (p < 0.001) — but the effect sizes are consistently tiny.
+* The ANOVA test is statistically significant (p < 0.001) — but the effect size was not separately calculated, so the practical size of the difference across freight ratio quartiles is unconfirmed.
 * Freight ratio's correlation with review score never exceeds ~0.05 in either raw or log-transformed form.
 * In both the base and extended regressions, delivery timing (`is_late`, `actual_delivery_days`) dominates the standardized coefficients — roughly **5–10x larger** in magnitude than freight ratio.
 * Freight ratio's regression coefficient is small and even slightly positive after controlling for delivery performance.
 
-> Insert Q1 Correlation & Regression Screenshot Here
-
----
-
-### Phase 5 — Q2: Seller Lifecycle Trust Erosion
-
-#### Key Insights
-
-* Deteriorating sellers start with the *highest* early-phase review score (4.500) of any archetype — they look no different, or even better, than stable sellers at first.
-* The earliest detectable warning sign is an accelerating late-delivery rate in the **mid** phase — before the review score itself has visibly declined.
-* Freight ratio change is small and similar across all three archetypes — pricing behavior is **not** a leading signal of seller decline.
-
-> Insert Seller Lifecycle Trajectory Screenshot Here
-
----
-
-### Phase 6 — Predictive Modeling
-
-#### Key Insights
-
-* Logistic Regression is both stronger and more stable under cross-validation than Random Forest, despite scoring slightly lower on a single test split.
-* The mid-phase late-delivery-rate change and early-phase review score are the most influential features in both models.
-
-> Insert Feature Importance Screenshot Here
+> Insert Correlation & Regression Screenshot Here
 
 ---
 
 ## Key Findings
 
-### 1. Delivery Reliability, Not Freight Pricing, Drives Satisfaction
+### 1. Delivery Reliability, Not Freight Pricing, Appears to Drive Satisfaction
 
-Across correlation analysis, hypothesis testing, and two regression models, delivery timing consistently shows an effect **5–10x larger** than freight ratio on customer review scores.
+Across correlation analysis and two regression models, delivery timing consistently shows an effect **5–10x larger** than freight ratio on customer review scores.
 
-### 2. Freight Cost Has a Statistically Significant but Practically Negligible Effect
+### 2. Freight Cost's Effect Is Statistically Significant but Small in Raw Correlation
 
-All three hypothesis tests reject the null hypothesis (p < 0.001), but correlation coefficients never exceed ~0.05 — a textbook example of statistical significance without practical significance at this scale of data.
+Both correlation tests and the ANOVA reject the null hypothesis (p < 0.001), but correlation coefficients never exceed ~0.05 — significance alone doesn't confirm a large practical effect, and effect size for the ANOVA specifically was not calculated.
 
-### 3. Deteriorating Sellers Start Out Looking *Better* Than Average
+### 3. 700 Orders Have No Review At All
 
-Sellers who eventually deteriorate have the highest early-phase review scores (4.500) of any archetype — making review score alone a poor early-warning indicator.
-
-### 4. Late-Delivery Rate Acceleration Is the Leading Signal of Seller Decline
-
-Deteriorating sellers show the sharpest early-to-mid increase in late-delivery percentage (+2.22 points), well ahead of any visible drop in review score.
-
-### 5. Pricing Behavior Is Not a Leading Signal
-
-Freight ratio changes are small and similar across deteriorating, stable, and improving sellers — ruling out pricing as an early indicator of decline.
-
-### 6. A Simple Logistic Regression Outperforms Random Forest on Stability
-
-Despite a lower single-split score, Logistic Regression generalizes more reliably across cross-validation folds (0.716 ± 0.017 vs. 0.681 ± 0.036), making it the more trustworthy model for a real early-warning system.
-
-### 7. 90% of Reviewed Orders Come From Just 941 Sellers
-
-Filtering to sellers with 15+ orders retains 90% of order volume while keeping enough history per seller to detect a lifecycle trend — a practical sample-size trade-off.
-
-### 8. 700 Orders Have No Review At All
-
-A meaningful share of delivered orders never receive a review, meaning review-based analyses inherently reflect only the subset of customers who choose to respond.
+A meaningful share of delivered orders never receive a review, meaning review-based analysis inherently reflects only the subset of customers who choose to respond.
 
 ---
 
@@ -357,15 +259,7 @@ Review score is only observed for customers who chose to leave a review (700 ord
 
 `shipping_distance_km` is calculated between zip-code centroids, not exact delivery addresses, making it an approximation of true shipping distance.
 
-### 4. Minimum-Order Threshold Trade-off
-
-The 15-order cutoff used for Q2 balances sample size against having enough history per seller, but excludes smaller/newer sellers who may show different lifecycle patterns.
-
-### 5. Modest Predictive Performance
-
-The deterioration classifier's ROC-AUC (~0.72) reflects a real but moderate signal — useful for prioritization and monitoring, not for high-stakes automated decisions about individual sellers.
-
-### 6. Single-Period Analysis
+### 4. Single-Period Analysis
 
 This project analyzes a single ~2-year window (Sept 2016 – Oct 2018). Seasonal effects, platform growth, and policy changes over time are not modeled separately.
 
@@ -374,7 +268,7 @@ This project analyzes a single ~2-year window (Sept 2016 – Oct 2018). Seasonal
 ## Metric Definitions & Methodology
 
 **FREIGHT RATIO**
-*Freight value divided by product price — the primary measure of shipping cost relative to product cost for Q1.*
+*Freight value divided by product price — the primary measure of shipping cost relative to product cost for this analysis.*
 
 **PROMISE GAP DAYS**
 *Days between actual delivery date and the estimated delivery date. Negative values mean the order arrived early; positive values mean it arrived late.*
@@ -384,21 +278,6 @@ This project analyzes a single ~2-year window (Sept 2016 – Oct 2018). Seasonal
 
 **SHIPPING DISTANCE (KM)**
 *Haversine (straight-line) distance between the seller's and customer's zip-code centroids.*
-
-**LIFECYCLE PHASE**
-*Early, mid, or late third of a seller's chronological order history, used to detect trends over a seller's tenure on the platform.*
-
-**SELLER ARCHETYPE**
-*Classification of a seller as deteriorating, stable, or improving, based on the change in average review score from their early phase to their late phase.*
-
-**REVIEW SCORE CHANGE**
-*A seller's average late-phase review score minus their average early-phase review score.*
-
-**LATE DELIVERY %**
-*Percentage of a seller's orders (within a given lifecycle phase) that arrived after the estimated delivery date.*
-
-**ROC-AUC**
-*Area under the receiver operating characteristic curve — a measure of how well a classification model distinguishes deteriorating sellers from non-deteriorating ones, independent of any single probability threshold.*
 
 ---
 
@@ -426,7 +305,7 @@ pip install pandas numpy matplotlib seaborn scipy scikit-learn jupyter
 ### Step 3 — Open the Notebook
 
 ```bash
-jupyter notebook olist_analysis_documented_full.ipynb
+jupyter notebook olist_analysis_documented.ipynb
 ```
 
 ### Step 4 — Run All Cells
@@ -440,7 +319,7 @@ All required CSV files are already included in the repository, so the notebook c
 ```text
 Olist_Analysis/
 │
-├── olist_analysis_documented_full.ipynb   # Main notebook — fully commented with markdown explanations
+├── olist_analysis_documented.ipynb        # Main notebook — fully commented with markdown explanations
 ├── olist_analysis.ipynb                   # Original notebook (code only, no comments/markdown)
 │
 ├── olist_orders_dataset.csv
@@ -459,7 +338,7 @@ Olist_Analysis/
 └── LICENSE
 ```
 
-> **Which notebook should I open?** Start with `olist_analysis_documented_full.ipynb` — it contains the identical analysis and results as `olist_analysis.ipynb`, but with inline comments and markdown section headers explaining the reasoning behind every cleaning decision, join, test, and model.
+> **Which notebook should I open?** Start with `olist_analysis_documented.ipynb` — it contains the identical analysis and results as `olist_analysis.ipynb`, but with inline comments and markdown section headers explaining the reasoning behind every cleaning decision, join, test, and model.
 
 ---
 
@@ -469,12 +348,9 @@ Olist_Analysis/
 * Data Cleaning
 * Feature Engineering
 * Exploratory Data Analysis
-* Statistical Hypothesis Testing (ANOVA, Kruskal-Wallis, Mann-Whitney U)
+* Statistical Hypothesis Testing (ANOVA)
 * Correlation Analysis (Pearson & Spearman)
 * Multivariate Regression
-* Customer Behavior Segmentation
-* Predictive Modeling (Logistic Regression, Random Forest)
-* Model Validation (Cross-Validation, ROC-AUC)
 * Data Storytelling
 * Python (Pandas, NumPy, Scikit-learn)
 
